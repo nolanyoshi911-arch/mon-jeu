@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jeu Multijoueur</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #222;
+            font-family: Arial;
+            color: white;
+        }
+        canvas {
+            display: block;
+            background: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- Charge Socket.io depuis le serveur -->
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+        // Se connecter au serveur
+        const socket = io();
+
+        // Récupérer le canvas et le contexte
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Ma position initiale
+        let myId = null;
+        let myX = Math.random() * 700;
+        let myY = Math.random() * 500;
+
+        // Les autres joueurs
+        const players = {};
+
+        // Quand on reçoit la liste des joueurs au démarrage
+        socket.on('players', (serverPlayers) => {
+            myId = socket.id; // l'ID du client
+            for (const id in serverPlayers) {
+                if (id !== myId) {
+                    players[id] = serverPlayers[id];
+                } else {
+                    // Le serveur nous donne aussi notre position initiale
+                    myX = serverPlayers[id].x;
+                    myY = serverPlayers[id].y;
+                }
+            }
+        });
+
+        // Quand un nouveau joueur se connecte
+        socket.on('newPlayer', (player) => {
+            players[player.id] = player;
+        });
+
+        // Quand un joueur bouge
+        socket.on('playerMoved', (data) => {
+            if (players[data.id]) {
+                players[data.id].x = data.x;
+                players[data.id].y = data.y;
+            }
+        });
+
+        // Quand un joueur se déconnecte
+        socket.on('playerLeft', (id) => {
+            delete players[id];
+        });
+
+        // Gestion des touches pour déplacer mon carré
+        const keys = {};
+        window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+        // Envoyer ma position au serveur toutes les 50 ms
+        setInterval(() => {
+            if (myId) {
+                const speed = 3;
+                if (keys['arrowleft'] || keys['q']) myX -= speed;
+                if (keys['arrowright'] || keys['d']) myX += speed;
+                if (keys['arrowup'] || keys['z']) myY -= speed;
+                if (keys['arrowdown'] || keys['s']) myY += speed;
+
+                // Limiter à l'écran
+                myX = Math.max(0, Math.min(780, myX));
+                myY = Math.max(0, Math.min(580, myY));
+
+                // Envoyer ma position
+                socket.emit('move', { x: myX, y: myY });
+            }
+        }, 50);
+
+        // Boucle de dessin
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessiner mon carré
+            if (myId) {
+                ctx.fillStyle = 'blue';
+                ctx.fillRect(myX, myY, 20, 20);
+            }
+
+            // Dessiner les autres carrés
+            for (const id in players) {
+                ctx.fillStyle = 'red';
+                ctx.fillRect(players[id].x, players[id].y, 20, 20);
+            }
+
+            requestAnimationFrame(draw);
+        }
+        draw();
+    </script>
+</body>
+</html>
